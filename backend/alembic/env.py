@@ -14,7 +14,7 @@ if str(backend_dir) not in sys.path:
 
 from app.database.connection import DATABASE_URL
 from app.database.base import Base
-import app.models.user  # ensure models are registered
+import app.models  # ensure all models (User, PromptSystem) are registered
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
