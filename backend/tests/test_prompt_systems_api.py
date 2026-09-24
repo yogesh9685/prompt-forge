@@ -1,8 +1,8 @@
-"""Tests for Prompt Systems CRUD APIs, authentication, authorization, and validation."""
+"""Tests for Prompt Systems CRUD APIs, authentication, authorization, and validation with async database."""
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
 from backend.app.database.base import Base
@@ -14,31 +14,34 @@ from backend.app.services.auth_service import create_access_token
 
 
 @pytest.fixture
-def db_session():
-    """Create a clean, isolated SQLite in-memory database for testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
+async def db_session():
+    """Create a clean, isolated SQLite async in-memory database for testing."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = TestingSessionLocal()
-    try:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    TestingSessionLocal = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    async with TestingSessionLocal() as session:
         yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest.fixture
 def client(db_session):
     """Provide a TestClient with overridden get_db dependency."""
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
+    async def override_get_db():
+        yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
@@ -47,30 +50,30 @@ def client(db_session):
 
 
 @pytest.fixture
-def user1(db_session):
-    """Create the primary test user."""
+async def user1(db_session):
+    """Create the primary test user asynchronously."""
     u1 = User(
         name="User One",
         email="user1@promptforge.io",
         password_hash="$2b$12$hashedpasswordforuserone",
     )
     db_session.add(u1)
-    db_session.commit()
-    db_session.refresh(u1)
+    await db_session.commit()
+    await db_session.refresh(u1)
     return u1
 
 
 @pytest.fixture
-def user2(db_session):
-    """Create a secondary test user for ownership testing."""
+async def user2(db_session):
+    """Create a secondary test user for ownership testing asynchronously."""
     u2 = User(
         name="User Two",
         email="user2@promptforge.io",
         password_hash="$2b$12$hashedpasswordforusertwo",
     )
     db_session.add(u2)
-    db_session.commit()
-    db_session.refresh(u2)
+    await db_session.commit()
+    await db_session.refresh(u2)
     return u2
 
 
@@ -173,8 +176,9 @@ def test_update_prompt_system(client, auth_headers1, user1):
     assert data["owner_id"] == user1.id  # Unchanged
 
 
-def test_delete_prompt_system(client, auth_headers1, db_session):
-    """Test deleting a Prompt System removes it from database."""
+@pytest.mark.asyncio
+async def test_delete_prompt_system(client, auth_headers1, db_session):
+    """Test deleting a Prompt System removes it from database asynchronously."""
     create_resp = client.post(
         "/prompt-systems",
         json={"name": "To Be Deleted"},
@@ -185,12 +189,14 @@ def test_delete_prompt_system(client, auth_headers1, db_session):
     delete_resp = client.delete(f"/prompt-systems/{ps_id}", headers=auth_headers1)
     assert delete_resp.status_code == 200
 
-    # Ensure it no longer exists
+    # Ensure it no longer exists via API
     get_resp = client.get(f"/prompt-systems/{ps_id}", headers=auth_headers1)
     assert get_resp.status_code == 404
 
-    # Direct DB check
-    assert db_session.query(PromptSystem).filter(PromptSystem.id == ps_id).first() is None
+    # Direct async DB check with select()
+    stmt = select(PromptSystem).where(PromptSystem.id == ps_id)
+    result = await db_session.execute(stmt)
+    assert result.scalar_one_or_none() is None
 
 
 def test_unauthenticated_requests(client):

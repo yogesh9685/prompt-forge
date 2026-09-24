@@ -1,6 +1,8 @@
 """PromptSystem database model definition."""
+from datetime import datetime
+from typing import Any, Optional, TYPE_CHECKING
 from sqlalchemy import (
-    Column,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -10,9 +12,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database.base import Base
+
+if TYPE_CHECKING:
+    from .user import User
 
 
 class PromptSystem(Base):
@@ -20,23 +25,44 @@ class PromptSystem(Base):
 
     __tablename__ = "prompt_systems"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    owner_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    owner_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    instructions = Column(Text, nullable=True)
-    variables = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True, default=dict)
-    examples = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True, default=list)
-    output_format = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True, default=dict)
-    modules = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True, default=list)
-    version = Column(Integer, nullable=False, default=1, server_default="1")
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    variables: Mapped[Optional[Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+        default=dict,
+    )
+    examples: Mapped[Optional[Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+        default=list,
+    )
+    output_format: Mapped[Optional[Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+        default=dict,
+    )
+    modules: Mapped[Optional[Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+        default=list,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
@@ -44,7 +70,7 @@ class PromptSystem(Base):
     )
 
     # Relationship to owning user
-    owner = relationship("User", back_populates="prompt_systems")
+    owner: Mapped["User"] = relationship("User", back_populates="prompt_systems")
 
     def __repr__(self) -> str:
         return f"<PromptSystem id={self.id} name='{self.name}' owner_id={self.owner_id} version={self.version}>"

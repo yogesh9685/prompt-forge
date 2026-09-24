@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 from .database.connection import get_db, verify_database_connection
@@ -43,14 +43,14 @@ def health_check():
 
 
 @app.get("/health/db", tags=["Health"])
-def db_health_check(db: Session = Depends(get_db)):
+async def db_health_check(db: AsyncSession = Depends(get_db)):
     """PostgreSQL database connectivity health check.
     
-    Verifies that the database engine can execute queries and the session is healthy.
+    Verifies that the database engine can execute queries and the session is healthy asynchronously.
     """
     try:
-        # Execute lightweight ping query
-        db.execute(text("SELECT 1"))
+        # Execute lightweight ping query asynchronously
+        await db.execute(text("SELECT 1"))
         return {
             "status": "ok",
             "database": "connected",

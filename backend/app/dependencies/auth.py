@@ -2,7 +2,8 @@
 from typing import Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 from ..database.connection import get_db
@@ -13,12 +14,12 @@ from ..services.auth_service import decode_access_token
 security = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
+async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Validate Bearer JWT from Authorization header and return authenticated User.
+    """Validate Bearer JWT from Authorization header and return authenticated User asynchronously.
 
     Handles:
         - missing token
@@ -87,7 +88,10 @@ def get_current_user(
         )
 
     try:
-        user = db.query(User).filter(User.id == int(user_id)).first()
+        parsed_id = int(user_id)
+        stmt = select(User).where(User.id == parsed_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
     except (ValueError, TypeError):
         user = None
 

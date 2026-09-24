@@ -1,5 +1,7 @@
-"""SQLAlchemy Declarative Base foundation."""
-from sqlalchemy.orm import declarative_base
+"""SQLAlchemy 2.0 DeclarativeBase foundation."""
+from sqlalchemy.orm import DeclarativeBase
 
-# Base class for all future database models to inherit from
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Base class for all PromptForge database models."""
+    pass
