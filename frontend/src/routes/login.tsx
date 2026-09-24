@@ -1,12 +1,18 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AuthShell } from "@/components/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getStoredUser, isAuthenticated, setAuthData } from "@/lib/auth";
+import { isAuthenticated, setAuthData } from "@/lib/auth";
+import { ApiError, authService } from "@/services";
 import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
+  beforeLoad: () => {
+    if (isAuthenticated()) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Log in — PromptForge" },
@@ -29,7 +35,7 @@ function LoginPage() {
   const [globalError, setGlobalError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // If already authenticated, redirect to /dashboard
+  // If already authenticated on client mount, redirect to /dashboard
   useEffect(() => {
     if (isAuthenticated()) {
       navigate({ to: "/dashboard", replace: true });
@@ -61,50 +67,35 @@ function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     if (!validate()) return;
 
     setLoading(true);
     setGlobalError("");
 
     try {
-      // Attempt backend auth if API is available, otherwise graceful fallback
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      let backendSuccess = false;
+      const response = await authService.login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-      try {
-        const res = await fetch(`${apiUrl}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: email.trim().toLowerCase(),
-            password,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setAuthData(
-            { id: data.user?.id, name: data.user?.name, email: data.user?.email || email.trim() },
-            data.access_token
-          );
-          backendSuccess = true;
-        } else if (res.status === 401 || res.status === 400) {
-          const errData = await res.json().catch(() => null);
-          setGlobalError(errData?.detail || "Invalid email or password.");
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // Backend not reached or offline; fall back to local storage auth
-      }
-
-      if (!backendSuccess) {
-        setAuthData({ email: email.trim() });
-      }
+      // Save token and user info
+      setAuthData(
+        {
+          id: response.user?.id,
+          name: response.user?.name,
+          email: response.user?.email || email.trim().toLowerCase(),
+        },
+        response.access_token
+      );
 
       navigate({ to: "/dashboard", replace: true });
-    } catch {
-      setGlobalError("An unexpected error occurred. Please try again.");
+    } catch (err: any) {
+      if (err instanceof ApiError) {
+        setGlobalError(err.message);
+      } else {
+        setGlobalError("An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -125,7 +116,10 @@ function LoginPage() {
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
         {globalError && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          >
             {globalError}
           </div>
         )}
@@ -138,6 +132,7 @@ function LoginPage() {
             onChange={(e) => {
               setEmail(e.target.value);
               if (emailError) setEmailError("");
+              if (globalError) setGlobalError("");
             }}
             placeholder="you@company.com"
             disabled={loading}
@@ -165,6 +160,7 @@ function LoginPage() {
             onChange={(e) => {
               setPassword(e.target.value);
               if (passwordError) setPasswordError("");
+              if (globalError) setGlobalError("");
             }}
             placeholder="••••••••"
             disabled={loading}
