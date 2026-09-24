@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 from .database.connection import get_db, verify_database_connection
+from .routes.auth import router as auth_router
 
 app = FastAPI(
     title="PromptForge API",
@@ -22,6 +23,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include Routers
+app.include_router(auth_router)
 
 
 @app.get("/", tags=["General"])
