@@ -1,6 +1,7 @@
 """Authentication routes."""
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
 from ..dependencies.auth import get_current_user
@@ -28,12 +29,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     summary="Register a new user",
     description="Registers a new user account with hashed password and unique email.",
 )
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    """Handle user registration."""
+async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Handle user registration asynchronously."""
     normalized_email = request.email.lower()
 
-    # Check for duplicate email
-    existing_user = db.query(User).filter(User.email == normalized_email).first()
+    # Check for duplicate email using SQLAlchemy 2.0 select()
+    stmt = select(User).where(User.email == normalized_email)
+    result = await db.execute(stmt)
+    existing_user = result.scalar_one_or_none()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -51,8 +54,8 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     )
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
 
     return user
 
@@ -64,12 +67,14 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     summary="User login",
     description="Authenticates a user with email and password and returns JWT access token.",
 )
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Handle user login and credential verification."""
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """Handle user login and credential verification asynchronously."""
     normalized_email = request.email.lower()
 
-    # Find the user by email
-    user = db.query(User).filter(User.email == normalized_email).first()
+    # Find user by email using SQLAlchemy 2.0 select()
+    stmt = select(User).where(User.email == normalized_email)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -102,6 +107,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     summary="Get current user profile",
     description="Returns profile of currently authenticated user using JWT Bearer token.",
 )
-def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_current_user)):
     """Retrieve profile of authenticated user."""
     return current_user

@@ -1,11 +1,16 @@
-"""Database connection and session management module."""
+"""Database connection and async session management module."""
 import os
 import logging
-from typing import Generator
+from typing import AsyncGenerator
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 logger = logging.getLogger(__name__)
@@ -17,59 +22,57 @@ if env_path.exists():
 else:
     load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if not DATABASE_URL:
-    # Notice for developers without exposing sensitive data
-    logger.warning("DATABASE_URL environment variable is not set.")
-    # Fallback to empty string to allow module import without crashing immediately
-    DATABASE_URL = ""
-
-# Support postgres:// URLs (e.g. from some hosting providers) by normalizing to postgresql://
+# Normalize postgres URL schemes to asyncpg driver
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
-def create_db_engine(db_url: str):
-    """Create and configure a SQLAlchemy engine."""
+def create_db_async_engine(db_url: str) -> AsyncEngine | None:
+    """Create and configure a SQLAlchemy AsyncEngine."""
     if not db_url:
         return None
-    return create_engine(
+    return create_async_engine(
         db_url,
-        pool_pre_ping=True,  # Test connection liveness before checking out from pool
+        pool_pre_ping=True,
         echo=False,
     )
 
 
-# Initialize engine if DATABASE_URL is available
-engine = create_db_engine(DATABASE_URL) if DATABASE_URL else None
+# Initialize async engine if DATABASE_URL is configured
+engine = create_db_async_engine(DATABASE_URL) if DATABASE_URL else None
 
-# Session factory bound to engine
-SessionLocal = (
-    sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Async session factory bound to async engine
+AsyncSessionLocal = (
+    async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
     if engine
     else None
 )
 
 
-def get_db() -> Generator[Session, None, None]:
-    """FastAPI generator dependency providing a transactional database session.
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI async dependency providing an AsyncSession.
     
-    Ensures that the session is always closed after the request completes.
+    Ensures that the session is always closed after the request finishes.
     """
-    if SessionLocal is None:
+    if AsyncSessionLocal is None:
         raise RuntimeError(
             "Database engine is not initialized. Please ensure DATABASE_URL is properly configured."
         )
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as session:
+        yield session
 
 
-def verify_database_connection() -> dict:
-    """Verifies PostgreSQL connectivity by executing a lightweight SELECT 1.
+async def verify_database_connection() -> dict:
+    """Verifies PostgreSQL connectivity asynchronously by executing a lightweight SELECT 1.
     
     Returns a dict with status and safe details without exposing credentials.
     """
@@ -81,8 +84,8 @@ def verify_database_connection() -> dict:
         }
 
     try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
         return {
             "status": "ok",
             "database": "connected",

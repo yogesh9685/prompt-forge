@@ -1,8 +1,13 @@
 """User database model definition."""
-from sqlalchemy import Column, Integer, String, DateTime, func
-from sqlalchemy.orm import relationship
+from datetime import datetime
+from typing import List, TYPE_CHECKING
+from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database.base import Base
+
+if TYPE_CHECKING:
+    from .prompt_system import PromptSystem
 
 
 class User(Base):
@@ -10,12 +15,16 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
@@ -23,7 +32,7 @@ class User(Base):
     )
 
     # Relationships
-    prompt_systems = relationship(
+    prompt_systems: Mapped[List["PromptSystem"]] = relationship(
         "PromptSystem",
         back_populates="owner",
         cascade="all, delete-orphan",

@@ -1,9 +1,9 @@
-"""Tests for user registration, login, and JWT authentication flows."""
+"""Tests for user registration, login, and JWT authentication flows with async database."""
 from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
 from backend.app.database.base import Base
@@ -18,31 +18,34 @@ from backend.app.services.auth_service import (
 
 
 @pytest.fixture
-def db_session():
-    """Create a clean, isolated SQLite in-memory database for testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
+async def db_session():
+    """Create a clean, isolated SQLite async in-memory database for testing."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = TestingSessionLocal()
-    try:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    TestingSessionLocal = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    async with TestingSessionLocal() as session:
         yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=engine)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest.fixture
 def client(db_session):
     """Provide a TestClient with overridden get_db dependency."""
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
+    async def override_get_db():
+        yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
@@ -54,7 +57,8 @@ def client(db_session):
 # Registration Tests
 # ==============================================================================
 
-def test_successful_registration(client, db_session):
+@pytest.mark.asyncio
+async def test_successful_registration(client, db_session):
     """Test successful user registration returns expected schema without sensitive data."""
     payload = {
         "name": "Yogesh",
@@ -75,8 +79,10 @@ def test_successful_registration(client, db_session):
     assert "password" not in data
     assert "password_hash" not in data
 
-    # Verify user exists in the database
-    db_user = db_session.query(User).filter(User.email == "yogesh@example.com").first()
+    # Verify user exists in the database asynchronously using select()
+    stmt = select(User).where(User.email == "yogesh@example.com")
+    result = await db_session.execute(stmt)
+    db_user = result.scalar_one_or_none()
     assert db_user is not None
     assert db_user.name == "Yogesh"
     assert db_user.password_hash != "password123"
@@ -154,7 +160,8 @@ def test_invalid_short_password(client, short_password):
     assert response.status_code == 422
 
 
-def test_password_is_stored_hashed(client, db_session):
+@pytest.mark.asyncio
+async def test_password_is_stored_hashed(client, db_session):
     """Verify that password is never stored plaintext and is securely hashed."""
     plain_password = "MySuperSecretPassword#2026"
     payload = {
@@ -165,7 +172,9 @@ def test_password_is_stored_hashed(client, db_session):
     response = client.post("/auth/register", json=payload)
     assert response.status_code == 201
 
-    db_user = db_session.query(User).filter(User.email == "security@example.com").first()
+    stmt = select(User).where(User.email == "security@example.com")
+    result = await db_session.execute(stmt)
+    db_user = result.scalar_one_or_none()
     assert db_user is not None
     # Must never equal plaintext
     assert db_user.password_hash != plain_password

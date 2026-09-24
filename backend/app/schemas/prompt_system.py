@@ -80,5 +80,6 @@ class PromptSystemResponse(BaseModel):
     output_format: Optional[Any] = None
     modules: Optional[Any] = None
     version: int
+    archived: bool = False
     created_at: datetime
     updated_at: datetime
