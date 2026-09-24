@@ -1,5 +1,6 @@
 """User database model definition."""
 from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy.orm import relationship
 
 from ..database.base import Base
 
@@ -19,6 +20,13 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    # Relationships
+    prompt_systems = relationship(
+        "PromptSystem",
+        back_populates="owner",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
