@@ -1,4 +1,5 @@
-"""Tests for user registration authentication flow, model, validation, and security."""
+"""Tests for user registration, login, and JWT authentication flows."""
+from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -9,7 +10,11 @@ from backend.app.database.base import Base
 from backend.app.database.connection import get_db
 from backend.app.main import app
 from backend.app.models.user import User
-from backend.app.utils.security import verify_password
+from backend.app.services.auth_service import (
+    create_access_token,
+    decode_access_token,
+    verify_password,
+)
 
 
 @pytest.fixture
@@ -197,11 +202,11 @@ def test_name_validation(client):
 
 
 # ==============================================================================
-# Login Tests
+# Login & JWT Tests
 # ==============================================================================
 
-def test_successful_login(client):
-    """Test successful login with registered credentials."""
+def test_successful_jwt_login(client):
+    """Test successful login returns access_token, bearer token_type, and user profile."""
     # Register user first
     reg_payload = {
         "name": "Yogesh",
@@ -221,7 +226,9 @@ def test_successful_login(client):
     assert login_resp.status_code == 200
 
     data = login_resp.json()
-    assert data["message"] == "Login successful"
+    assert "access_token" in data
+    assert isinstance(data["access_token"], str) and len(data["access_token"]) > 10
+    assert data["token_type"] == "bearer"
     assert "user" in data
     assert data["user"]["id"] == user_id
     assert data["user"]["name"] == "Yogesh"
@@ -232,6 +239,11 @@ def test_successful_login(client):
     assert "password_hash" not in data
     assert "password" not in data["user"]
     assert "password_hash" not in data["user"]
+
+    # Validate the generated token decodes properly
+    decoded = decode_access_token(data["access_token"])
+    assert decoded["sub"] == str(user_id)
+    assert decoded["email"] == "yogesh@example.com"
 
 
 def test_login_incorrect_password(client):
@@ -299,5 +311,96 @@ def test_login_case_insensitive_email(client):
     }
     login_resp = client.post("/auth/login", json=login_payload)
     assert login_resp.status_code == 200
-    assert login_resp.json()["message"] == "Login successful"
+    assert "access_token" in login_resp.json()
     assert login_resp.json()["user"]["email"] == "case.sensitive@example.com"
+
+
+def test_valid_token_decoding():
+    """Test creating and decoding a valid JWT token directly."""
+    token = create_access_token(data={"sub": "42", "email": "test@example.com"})
+    payload = decode_access_token(token)
+    assert payload["sub"] == "42"
+    assert payload["email"] == "test@example.com"
+    assert "exp" in payload
+    assert "iat" in payload
+
+
+def test_auth_me_with_valid_token(client):
+    """Test GET /auth/me returns current user profile with valid Bearer token."""
+    reg_resp = client.post(
+        "/auth/register",
+        json={"name": "Protected User", "email": "me@example.com", "password": "password123"},
+    )
+    assert reg_resp.status_code == 201
+    user_id = reg_resp.json()["id"]
+
+    login_resp = client.post(
+        "/auth/login",
+        json={"email": "me@example.com", "password": "password123"},
+    )
+    token = login_resp.json()["access_token"]
+
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == user_id
+    assert data["name"] == "Protected User"
+    assert data["email"] == "me@example.com"
+
+    # Confirm password fields never leak
+    assert "password" not in data
+    assert "password_hash" not in data
+
+
+def test_auth_me_without_token(client):
+    """Test GET /auth/me without Authorization header returns 401."""
+    response = client.get("/auth/me")
+    assert response.status_code == 401
+    assert "missing" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize(
+    "invalid_header",
+    [
+        "Bearer invalid.token.string",
+        "Bearer not-a-jwt",
+        "Basic dXNlcjpwYXNz",
+        "Bearer",
+        "TokenOnlyWithoutBearerPrefix",
+    ],
+)
+def test_invalid_token(client, invalid_header):
+    """Test GET /auth/me with invalid or malformed Authorization header returns 401."""
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": invalid_header},
+    )
+    assert response.status_code == 401
+
+
+def test_expired_token(client):
+    """Test that an expired token returns 401 Unauthorized."""
+    expired_token = create_access_token(
+        data={"sub": "1", "email": "expired@example.com"},
+        expires_delta=timedelta(seconds=-10),
+    )
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+    assert response.status_code == 401
+    assert "expired" in response.json()["detail"].lower()
+
+
+def test_auth_me_user_not_found(client):
+    """Test that a valid token with a non-existent user id returns 401."""
+    token = create_access_token(data={"sub": "999999", "email": "nonexistent@example.com"})
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 401
+    assert "not found" in response.json()["detail"].lower()
