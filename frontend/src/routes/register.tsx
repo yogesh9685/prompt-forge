@@ -1,18 +1,24 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AuthShell } from "@/components/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isAuthenticated, setAuthData } from "@/lib/auth";
+import { ApiError, authService } from "@/services";
 import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/register")({
+  beforeLoad: () => {
+    if (isAuthenticated()) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   head: () => ({
     meta: [
-      { title: "Create account — PromptForge" },
-      { name: "description", content: "Create a PromptForge account to build reusable Prompt Systems." },
-      { property: "og:title", content: "Create account — PromptForge" },
-      { property: "og:description", content: "Create a PromptForge account to build reusable Prompt Systems." },
+      { title: "Sign up — PromptForge" },
+      { name: "description", content: "Create an account to start building modular Prompt Systems." },
+      { property: "og:title", content: "Sign up — PromptForge" },
+      { property: "og:description", content: "Create an account to start building modular Prompt Systems." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -22,27 +28,33 @@ export const Route = createFileRoute("/register")({
 
 function RegisterPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirm: "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // If already authenticated, redirect to /dashboard
+  // If already authenticated on client mount, redirect to /dashboard
   useEffect(() => {
     if (isAuthenticated()) {
       navigate({ to: "/dashboard", replace: true });
     }
   }, [navigate]);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [k]: e.target.value });
-    if (errors[k]) {
+  const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    if (errors[field]) {
       setErrors((prev) => {
         const next = { ...prev };
-        delete next[k];
+        delete next[field];
         return next;
       });
     }
+    if (globalError) setGlobalError("");
   };
 
   const validate = () => {
@@ -63,7 +75,6 @@ function RegisterPage() {
     if (!form.password) {
       newErrors.password = "Password is required.";
     } else if (form.password.length < 8) {
-      // Backend requires at least 8 characters, user prompt specifies min 6-character, 8 satisfies both
       newErrors.password = "Password must be at least 8 characters.";
     }
 
@@ -79,69 +90,53 @@ function RegisterPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     if (!validate()) return;
 
     setLoading(true);
     setGlobalError("");
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      let backendSuccess = false;
+      const normalizedEmail = form.email.trim().toLowerCase();
 
+      // 1. Call backend registration endpoint
+      await authService.register({
+        name: form.name.trim(),
+        email: normalizedEmail,
+        password: form.password,
+      });
+
+      // 2. Automatically log in the user upon successful registration
       try {
-        const res = await fetch(`${apiUrl}/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: form.name.trim(),
-            email: form.email.trim().toLowerCase(),
-            password: form.password,
-          }),
+        const loginResponse = await authService.login({
+          email: normalizedEmail,
+          password: form.password,
         });
 
-        if (res.ok) {
-          const registeredUser = await res.json();
-          // After registration, try auto-login on backend
-          try {
-            const loginRes = await fetch(`${apiUrl}/auth/login`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: form.email.trim().toLowerCase(),
-                password: form.password,
-              }),
-            });
-            if (loginRes.ok) {
-              const loginData = await loginRes.json();
-              setAuthData(
-                { id: loginData.user?.id, name: loginData.user?.name, email: loginData.user?.email },
-                loginData.access_token
-              );
-            } else {
-              setAuthData({ id: registeredUser.id, name: registeredUser.name, email: registeredUser.email });
-            }
-          } catch {
-            setAuthData({ id: registeredUser.id, name: registeredUser.name, email: registeredUser.email });
-          }
-          backendSuccess = true;
-        } else if (res.status === 400) {
-          const errData = await res.json().catch(() => null);
-          const msg = errData?.detail || "Email is already registered.";
-          setGlobalError(msg);
-          setLoading(false);
-          return;
-        }
+        setAuthData(
+          {
+            id: loginResponse.user?.id,
+            name: loginResponse.user?.name,
+            email: loginResponse.user?.email || normalizedEmail,
+          },
+          loginResponse.access_token
+        );
+
+        navigate({ to: "/dashboard", replace: true });
       } catch {
-        // Backend offline/unreachable; fallback to localStorage
+        // Fallback: If auto-login fails, redirect to /login with prompt
+        navigate({ to: "/login", replace: true });
       }
-
-      if (!backendSuccess) {
-        setAuthData({ name: form.name.trim(), email: form.email.trim() });
+    } catch (err: any) {
+      if (err instanceof ApiError) {
+        if (err.status === 400 && err.message.toLowerCase().includes("email")) {
+          setErrors((prev) => ({ ...prev, email: err.message }));
+        } else {
+          setGlobalError(err.message);
+        }
+      } else {
+        setGlobalError("An unexpected error occurred. Please try again.");
       }
-
-      navigate({ to: "/dashboard", replace: true });
-    } catch {
-      setGlobalError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -162,7 +157,10 @@ function RegisterPage() {
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
         {globalError && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          >
             {globalError}
           </div>
         )}
