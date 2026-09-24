@@ -48,7 +48,7 @@ class LoginRequest(BaseModel):
 
 
 class UserLoginData(BaseModel):
-    """Basic user profile data returned upon login."""
+    """Basic user profile data returned upon login and auth checks."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,7 +58,8 @@ class UserLoginData(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Response returned upon successful authentication."""
+    """Response returned upon successful authentication containing JWT access token."""
 
-    message: str = "Login successful"
+    access_token: str
+    token_type: str = "bearer"
     user: UserLoginData

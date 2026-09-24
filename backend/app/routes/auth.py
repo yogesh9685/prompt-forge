@@ -3,9 +3,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database.connection import get_db
+from ..dependencies.auth import get_current_user
 from ..models.user import User
-from ..schemas.auth import LoginRequest, LoginResponse, RegisterRequest, UserResponse
-from ..utils.security import hash_password, verify_password
+from ..schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    UserLoginData,
+    UserResponse,
+)
+from ..services.auth_service import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -51,7 +62,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     response_model=LoginResponse,
     status_code=status.HTTP_200_OK,
     summary="User login",
-    description="Authenticates a user with email and password and returns user profile.",
+    description="Authenticates a user with email and password and returns JWT access token.",
 )
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Handle user login and credential verification."""
@@ -72,7 +83,25 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid email or password.",
         )
 
+    # Generate JWT access token
+    access_token = create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+
     return LoginResponse(
-        message="Login successful",
+        access_token=access_token,
+        token_type="bearer",
         user=user,
     )
+
+
+@router.get(
+    "/me",
+    response_model=UserLoginData,
+    status_code=status.HTTP_200_OK,
+    summary="Get current user profile",
+    description="Returns profile of currently authenticated user using JWT Bearer token.",
+)
+def get_me(current_user: User = Depends(get_current_user)):
+    """Retrieve profile of authenticated user."""
+    return current_user
