@@ -38,3 +38,27 @@ class UserResponse(BaseModel):
     email: EmailStr
     created_at: datetime
     updated_at: datetime
+
+
+class LoginRequest(BaseModel):
+    """Schema for user login request payload."""
+
+    email: EmailStr = Field(..., description="Registered email address")
+    password: str = Field(..., min_length=1, description="Account password")
+
+
+class UserLoginData(BaseModel):
+    """Basic user profile data returned upon login."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: EmailStr
+
+
+class LoginResponse(BaseModel):
+    """Response returned upon successful authentication."""
+
+    message: str = "Login successful"
+    user: UserLoginData

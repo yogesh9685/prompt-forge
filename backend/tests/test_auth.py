@@ -45,6 +45,10 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
+# ==============================================================================
+# Registration Tests
+# ==============================================================================
+
 def test_successful_registration(client, db_session):
     """Test successful user registration returns expected schema without sensitive data."""
     payload = {
@@ -190,3 +194,110 @@ def test_name_validation(client):
         json={"email": "noname@example.com", "password": "password123"},
     )
     assert resp3.status_code == 422
+
+
+# ==============================================================================
+# Login Tests
+# ==============================================================================
+
+def test_successful_login(client):
+    """Test successful login with registered credentials."""
+    # Register user first
+    reg_payload = {
+        "name": "Yogesh",
+        "email": "yogesh@example.com",
+        "password": "password123",
+    }
+    reg_resp = client.post("/auth/register", json=reg_payload)
+    assert reg_resp.status_code == 201
+    user_id = reg_resp.json()["id"]
+
+    # Login with same credentials
+    login_payload = {
+        "email": "yogesh@example.com",
+        "password": "password123",
+    }
+    login_resp = client.post("/auth/login", json=login_payload)
+    assert login_resp.status_code == 200
+
+    data = login_resp.json()
+    assert data["message"] == "Login successful"
+    assert "user" in data
+    assert data["user"]["id"] == user_id
+    assert data["user"]["name"] == "Yogesh"
+    assert data["user"]["email"] == "yogesh@example.com"
+
+    # Verify sensitive data is NEVER returned
+    assert "password" not in data
+    assert "password_hash" not in data
+    assert "password" not in data["user"]
+    assert "password_hash" not in data["user"]
+
+
+def test_login_incorrect_password(client):
+    """Test that incorrect password returns 401 Unauthorized."""
+    # Register user
+    reg_payload = {
+        "name": "Test User",
+        "email": "test@example.com",
+        "password": "correct_password123",
+    }
+    reg_resp = client.post("/auth/register", json=reg_payload)
+    assert reg_resp.status_code == 201
+
+    # Attempt login with wrong password
+    login_payload = {
+        "email": "test@example.com",
+        "password": "wrong_password456",
+    }
+    login_resp = client.post("/auth/login", json=login_payload)
+    assert login_resp.status_code == 401
+    assert "invalid" in login_resp.json()["detail"].lower()
+
+
+def test_login_non_existing_email(client):
+    """Test that login with non-existing email returns 401 Unauthorized."""
+    login_payload = {
+        "email": "doesnotexist@example.com",
+        "password": "password123",
+    }
+    login_resp = client.post("/auth/login", json=login_payload)
+    assert login_resp.status_code == 401
+    assert "invalid" in login_resp.json()["detail"].lower()
+
+
+@pytest.mark.parametrize(
+    "invalid_payload",
+    [
+        {},
+        {"email": "test@example.com"},
+        {"password": "password123"},
+        {"email": "not-an-email", "password": "password123"},
+        {"email": "test@example.com", "password": ""},
+    ],
+)
+def test_login_empty_or_invalid_input(client, invalid_payload):
+    """Test that empty or malformed login requests are rejected with 422."""
+    response = client.post("/auth/login", json=invalid_payload)
+    assert response.status_code == 422
+
+
+def test_login_case_insensitive_email(client):
+    """Test that email matching during login is case-insensitive."""
+    reg_payload = {
+        "name": "Case User",
+        "email": "case.sensitive@example.com",
+        "password": "password123",
+    }
+    reg_resp = client.post("/auth/register", json=reg_payload)
+    assert reg_resp.status_code == 201
+
+    # Login with uppercase email
+    login_payload = {
+        "email": "CASE.SENSITIVE@EXAMPLE.COM",
+        "password": "password123",
+    }
+    login_resp = client.post("/auth/login", json=login_payload)
+    assert login_resp.status_code == 200
+    assert login_resp.json()["message"] == "Login successful"
+    assert login_resp.json()["user"]["email"] == "case.sensitive@example.com"
