@@ -10,6 +10,7 @@ from ..schemas.prompt_system import (
     PromptSystemCreate,
     PromptSystemResponse,
     PromptSystemUpdate,
+    VariableValidationResponse,
 )
 from ..services.prompt_system_service import (
     create_prompt_system,
@@ -20,6 +21,7 @@ from ..services.prompt_system_service import (
     set_prompt_system_archived_status,
     update_prompt_system,
 )
+from ..utils.variable_parser import validate_prompt_variables
 
 router = APIRouter(prefix="/prompt-systems", tags=["Prompt Systems"])
 
@@ -196,6 +198,39 @@ async def unarchive_existing_prompt_system(
     )
 
 
+@router.post(
+    "/{prompt_system_id}/variables/validate",
+    response_model=VariableValidationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Validate Prompt System variables",
+    description="Validates configured variables against variables referenced in instructions.",
+)
+async def validate_variables_endpoint(
+    prompt_system_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate Prompt System variables against instructions asynchronously."""
+    prompt_system = await get_prompt_system_by_id(db=db, prompt_system_id=prompt_system_id)
+    if not prompt_system:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt System not found.",
+        )
+
+    if prompt_system.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to validate variables for this Prompt System.",
+        )
+
+    validation_result = validate_prompt_variables(
+        instructions=prompt_system.instructions,
+        configured_variables=prompt_system.variables,
+    )
+    return VariableValidationResponse(**validation_result)
+
+
 @router.put(
     "/{prompt_system_id}",
     response_model=PromptSystemResponse,
@@ -224,6 +259,28 @@ async def update_existing_prompt_system(
         )
 
     return await update_prompt_system(db=db, prompt_system=prompt_system, data=payload)
+
+
+@router.patch(
+    "/{prompt_system_id}",
+    response_model=PromptSystemResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update a Prompt System",
+    description="Partially update an existing Prompt System (e.g. updating variables).",
+)
+async def patch_existing_prompt_system(
+    prompt_system_id: int,
+    payload: PromptSystemUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Partially update editable fields of a Prompt System asynchronously."""
+    return await update_existing_prompt_system(
+        prompt_system_id=prompt_system_id,
+        payload=payload,
+        current_user=current_user,
+        db=db,
+    )
 
 
 @router.delete(
