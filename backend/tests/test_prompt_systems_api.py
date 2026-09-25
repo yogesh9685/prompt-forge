@@ -262,3 +262,149 @@ def test_invalid_requests(client, auth_headers1):
     # Invalid path parameter
     res5 = client.get("/prompt-systems/invalid_id", headers=auth_headers1)
     assert res5.status_code == 422
+
+
+# ==============================================================================
+# Branch 9 Fix: Output Format Validation (String, Dictionary, List)
+# ==============================================================================
+
+def test_output_format_as_string(client, auth_headers1):
+    """Verify output_format accepts string and preserves string type on create and read."""
+    payload = {
+        "name": "Markdown System",
+        "output_format": "Return clean Markdown.",
+    }
+    response = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert response.status_code == 201
+    data = response.json()
+    assert isinstance(data["output_format"], str)
+    assert data["output_format"] == "Return clean Markdown."
+
+    # Fetch to verify persistence
+    get_res = client.get(f"/prompt-systems/{data['id']}", headers=auth_headers1)
+    assert get_res.status_code == 200
+    get_data = get_res.json()
+    assert isinstance(get_data["output_format"], str)
+    assert get_data["output_format"] == "Return clean Markdown."
+
+
+def test_output_format_as_multiline_string(client, auth_headers1):
+    """Verify output_format accepts multiline string with markdown formatting."""
+    multiline_format = (
+        "Return clean Markdown.\n\n"
+        "- Start with a three-bullet summary\n"
+        "- Use descriptive H2 and H3 headings\n"
+        "- Include runnable code blocks where useful\n"
+        "- Target 1,000–1,400 words\n"
+        "- End with practical next steps"
+    )
+    payload = {
+        "name": "Complex Markdown System",
+        "output_format": multiline_format,
+    }
+    response = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert response.status_code == 201
+    data = response.json()
+    assert isinstance(data["output_format"], str)
+    assert data["output_format"] == multiline_format
+
+    # Fetch to verify persistence
+    get_res = client.get(f"/prompt-systems/{data['id']}", headers=auth_headers1)
+    assert get_res.status_code == 200
+    assert get_res.json()["output_format"] == multiline_format
+
+
+def test_output_format_as_dictionary(client, auth_headers1):
+    """Verify output_format accepts dictionary and preserves dict type (not wrapped or converted to list)."""
+    payload = {
+        "name": "JSON Output System",
+        "output_format": {"name": "yogesh"},
+    }
+    response = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert response.status_code == 201
+    data = response.json()
+    assert isinstance(data["output_format"], dict)
+    assert data["output_format"] == {"name": "yogesh"}
+    assert not isinstance(data["output_format"], list)
+
+    # Fetch to verify persistence
+    get_res = client.get(f"/prompt-systems/{data['id']}", headers=auth_headers1)
+    assert get_res.status_code == 200
+    get_data = get_res.json()
+    assert isinstance(get_data["output_format"], dict)
+    assert get_data["output_format"] == {"name": "yogesh"}
+
+
+def test_output_format_as_list(client, auth_headers1):
+    """Verify output_format accepts list/array and preserves list type."""
+    payload = {
+        "name": "List Output System",
+        "output_format": ["summary", "headings", "code", "next_steps"],
+    }
+    response = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert response.status_code == 201
+    data = response.json()
+    assert isinstance(data["output_format"], list)
+    assert data["output_format"] == ["summary", "headings", "code", "next_steps"]
+
+    # Fetch to verify persistence
+    get_res = client.get(f"/prompt-systems/{data['id']}", headers=auth_headers1)
+    assert get_res.status_code == 200
+    get_data = get_res.json()
+    assert isinstance(get_data["output_format"], list)
+    assert get_data["output_format"] == ["summary", "headings", "code", "next_steps"]
+
+
+def test_output_format_patch_supports_all_three_types(client, auth_headers1):
+    """Verify PATCH /prompt-systems/{id} updates and preserves string, dict, and list."""
+    # 1. Create with string
+    create_res = client.post(
+        "/prompt-systems",
+        json={"name": "Flexible Format System", "output_format": "Initial string"},
+        headers=auth_headers1,
+    )
+    assert create_res.status_code == 201
+    ps_id = create_res.json()["id"]
+
+    # 2. PATCH with dictionary
+    patch_dict_res = client.patch(
+        f"/prompt-systems/{ps_id}",
+        json={"output_format": {"name": "yogesh"}},
+        headers=auth_headers1,
+    )
+    assert patch_dict_res.status_code == 200
+    assert isinstance(patch_dict_res.json()["output_format"], dict)
+    assert patch_dict_res.json()["output_format"] == {"name": "yogesh"}
+
+    # Verify via GET
+    get_res = client.get(f"/prompt-systems/{ps_id}", headers=auth_headers1)
+    assert get_res.json()["output_format"] == {"name": "yogesh"}
+
+    # 3. PATCH with list
+    patch_list_res = client.patch(
+        f"/prompt-systems/{ps_id}",
+        json={"output_format": ["summary", "headings"]},
+        headers=auth_headers1,
+    )
+    assert patch_list_res.status_code == 200
+    assert isinstance(patch_list_res.json()["output_format"], list)
+    assert patch_list_res.json()["output_format"] == ["summary", "headings"]
+
+    # Verify via GET
+    get_res = client.get(f"/prompt-systems/{ps_id}", headers=auth_headers1)
+    assert get_res.json()["output_format"] == ["summary", "headings"]
+
+    # 4. PATCH with string
+    patch_str_res = client.patch(
+        f"/prompt-systems/{ps_id}",
+        json={"output_format": "Return clean Markdown."},
+        headers=auth_headers1,
+    )
+    assert patch_str_res.status_code == 200
+    assert isinstance(patch_str_res.json()["output_format"], str)
+    assert patch_str_res.json()["output_format"] == "Return clean Markdown."
+
+    # Verify via GET
+    get_res = client.get(f"/prompt-systems/{ps_id}", headers=auth_headers1)
+    assert get_res.json()["output_format"] == "Return clean Markdown."
+

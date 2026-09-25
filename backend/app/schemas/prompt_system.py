@@ -88,7 +88,7 @@ class PromptSystemBase(BaseModel):
         default_factory=list,
         description="Prompt examples",
     )
-    output_format: Optional[Union[Dict[str, Any], List[Any]]] = Field(
+    output_format: Optional[Union[str, Dict[str, Any], List[Any]]] = Field(
         default_factory=dict,
         description="Output format specification",
     )
@@ -126,7 +126,7 @@ class PromptSystemUpdate(BaseModel):
     instructions: Optional[str] = None
     variables: Optional[Union[List[Any], Dict[str, Any]]] = None
     examples: Optional[Union[List[Any], Dict[str, Any]]] = None
-    output_format: Optional[Union[Dict[str, Any], List[Any]]] = None
+    output_format: Optional[Union[str, Dict[str, Any], List[Any]]] = None
     modules: Optional[Union[List[Any], Dict[str, Any]]] = None
 
     @field_validator("name")
@@ -159,7 +159,7 @@ class PromptSystemResponse(BaseModel):
     instructions: Optional[str] = None
     variables: Optional[Any] = None
     examples: Optional[Any] = None
-    output_format: Optional[Any] = None
+    output_format: Optional[Union[str, Dict[str, Any], List[Any]]] = None
     modules: Optional[Any] = None
     version: int
     archived: bool = False

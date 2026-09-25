@@ -89,6 +89,72 @@ def test_validate_prompt_variables_pure_function():
     assert empty["configured_variables"] == []
 
 
+def test_variable_parser_user_specification_cases():
+    """Test required cases from variable parser specification:
+    - 'Write for {expert}.' -> ['expert']
+    - '{topic} for {audience}' -> ['topic', 'audience']
+    - '{topic} {topic}' -> ['topic']
+    - 'Write for an expert.' -> []
+    - 'No variables' -> []
+    - 'Hello {a}' -> ['a']
+    """
+    assert extract_variables("Write for {expert}.") == ["expert"]
+    assert extract_variables("{topic} for {audience}") == ["topic", "audience"]
+    assert extract_variables("{topic} {topic}") == ["topic"]
+    assert extract_variables("Write for an expert.") == []
+    assert extract_variables("No variables") == []
+    assert extract_variables("Hello {a}") == ["a"]
+
+
+def test_variable_validation_five_specification_cases():
+    """Test the five required validation logic test cases:
+    Test 1: Instructions: 'Write for {expert}.', Configured: expert -> valid = True
+    Test 2: Instructions: 'Write for {expert}.', Configured: topic -> valid = False, missing=['expert'], unused=['topic']
+    Test 3: Instructions: 'Write an article.', Configured: expert -> valid = False, unused=['expert']
+    Test 4: Instructions: 'Write about {topic} for {audience}.', Configured: topic, audience -> valid = True
+    Test 5: Instructions: 'Write for an expert audience.', Configured: expert -> valid = False, detected=[], unused=['expert']
+    """
+    # Test 1
+    t1 = validate_prompt_variables("Write for {expert}.", ["expert"])
+    assert t1["valid"] is True
+    assert t1["detected_variables"] == ["expert"]
+    assert t1["configured_variables"] == ["expert"]
+    assert t1["missing_variables"] == []
+    assert t1["unused_variables"] == []
+
+    # Test 2
+    t2 = validate_prompt_variables("Write for {expert}.", ["topic"])
+    assert t2["valid"] is False
+    assert t2["detected_variables"] == ["expert"]
+    assert t2["configured_variables"] == ["topic"]
+    assert t2["missing_variables"] == ["expert"]
+    assert t2["unused_variables"] == ["topic"]
+
+    # Test 3
+    t3 = validate_prompt_variables("Write an article.", ["expert"])
+    assert t3["valid"] is False
+    assert t3["detected_variables"] == []
+    assert t3["configured_variables"] == ["expert"]
+    assert t3["missing_variables"] == []
+    assert t3["unused_variables"] == ["expert"]
+
+    # Test 4
+    t4 = validate_prompt_variables("Write about {topic} for {audience}.", ["topic", "audience"])
+    assert t4["valid"] is True
+    assert t4["detected_variables"] == ["topic", "audience"]
+    assert t4["configured_variables"] == ["topic", "audience"]
+    assert t4["missing_variables"] == []
+    assert t4["unused_variables"] == []
+
+    # Test 5: Distinct 'expert' from '{expert}'
+    t5 = validate_prompt_variables("Write for an expert audience.", ["expert"])
+    assert t5["valid"] is False
+    assert t5["detected_variables"] == []
+    assert t5["configured_variables"] == ["expert"]
+    assert t5["missing_variables"] == []
+    assert t5["unused_variables"] == ["expert"]
+
+
 # ==============================================================================
 # Integration Tests for Database & API Endpoints
 # ==============================================================================
@@ -407,3 +473,88 @@ def test_invalid_variable_name_with_spaces_rejected(client, auth_headers1):
     }
     res = client.post("/prompt-systems", json=payload, headers=auth_headers1)
     assert res.status_code == 422
+
+
+def test_variables_validation_expert_issue_scenario(client, auth_headers1):
+    """Verify endpoint correctly validates {expert} in instructions with configured expert variable."""
+    payload = {
+        "name": "Technical Article Writer",
+        "instructions": "Write a technical article for {expert}.",
+        "variables": [
+            {
+                "name": "expert",
+                "label": "Expert",
+                "type": "text",
+                "required": True,
+            }
+        ],
+    }
+    create_res = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert create_res.status_code == 201
+    ps_id = create_res.json()["id"]
+
+    val_res = client.post(f"/prompt-systems/{ps_id}/variables/validate", headers=auth_headers1)
+    assert val_res.status_code == 200
+    data = val_res.json()
+    assert data["valid"] is True
+    assert data["detected_variables"] == ["expert"]
+    assert data["configured_variables"] == ["expert"]
+    assert data["missing_variables"] == []
+    assert data["unused_variables"] == []
+
+
+def test_variables_validation_expert_without_braces_not_detected(client, auth_headers1):
+    """Verify endpoint does NOT treat 'expert' without curly braces as a variable reference."""
+    payload = {
+        "name": "Expert Audience System",
+        "instructions": "Write for an expert audience.",
+        "variables": [
+            {
+                "name": "expert",
+                "label": "Expert",
+                "type": "text",
+                "required": True,
+            }
+        ],
+    }
+    create_res = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert create_res.status_code == 201
+    ps_id = create_res.json()["id"]
+
+    val_res = client.post(f"/prompt-systems/{ps_id}/variables/validate", headers=auth_headers1)
+    assert val_res.status_code == 200
+    data = val_res.json()
+    assert data["valid"] is False
+    assert data["detected_variables"] == []
+    assert data["configured_variables"] == ["expert"]
+    assert data["missing_variables"] == []
+    assert data["unused_variables"] == ["expert"]
+
+
+def test_variables_validation_single_character_variable(client, auth_headers1):
+    """Verify single-character variable {a} is detected and validated."""
+    payload = {
+        "name": "Single Char System",
+        "instructions": "Hello {a}",
+        "variables": [
+            {
+                "name": "a",
+                "label": "A",
+                "type": "text",
+                "required": True,
+            }
+        ],
+    }
+    create_res = client.post("/prompt-systems", json=payload, headers=auth_headers1)
+    assert create_res.status_code == 201
+    ps_id = create_res.json()["id"]
+
+    val_res = client.post(f"/prompt-systems/{ps_id}/variables/validate", headers=auth_headers1)
+    assert val_res.status_code == 200
+    data = val_res.json()
+    assert data["valid"] is True
+    assert data["detected_variables"] == ["a"]
+    assert data["configured_variables"] == ["a"]
+    assert data["missing_variables"] == []
+    assert data["unused_variables"] == []
+

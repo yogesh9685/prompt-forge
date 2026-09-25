@@ -19,7 +19,7 @@ export interface PromptSystemCreate {
   instructions?: string | null;
   variables?: VariableDefinition[] | Record<string, unknown> | unknown[];
   examples?: unknown[] | Record<string, unknown>;
-  output_format?: Record<string, unknown> | unknown[];
+  output_format?: string | Record<string, unknown> | unknown[];
   modules?: unknown[] | Record<string, unknown>;
 }
 
@@ -29,7 +29,7 @@ export interface PromptSystemUpdate {
   instructions?: string | null;
   variables?: VariableDefinition[] | Record<string, unknown> | unknown[];
   examples?: unknown[] | Record<string, unknown>;
-  output_format?: Record<string, unknown> | unknown[];
+  output_format?: string | Record<string, unknown> | unknown[];
   modules?: unknown[] | Record<string, unknown>;
 }
 
@@ -56,6 +56,14 @@ export interface ListPromptSystemsParams {
   page?: number;
   limit?: number;
   include_archived?: boolean;
+}
+
+export interface VariableValidationResponse {
+  valid: boolean;
+  detected_variables: string[];
+  configured_variables: string[];
+  missing_variables: string[];
+  unused_variables: string[];
 }
 
 export const promptSystemService = {
@@ -134,6 +142,43 @@ export const promptSystemService = {
   },
 
   /**
+   * Partially update variables for a Prompt System: PATCH /prompt-systems/{id}
+   */
+  async updateVariables(id: number, variables: VariableDefinition[]): Promise<PromptSystem> {
+    return apiRequest<PromptSystem>(`/prompt-systems/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ variables }),
+    });
+  },
+
+  /**
+   * Validate Prompt System variables: POST /prompt-systems/{id}/variables/validate
+   */
+  async validateVariables(id: number): Promise<VariableValidationResponse> {
+    return apiRequest<VariableValidationResponse>(`/prompt-systems/${id}/variables/validate`, {
+      method: "POST",
+    });
+  },
+
+  /**
+   * Archive a Prompt System: PATCH /prompt-systems/{id}/archive
+   */
+  async archive(id: number): Promise<PromptSystem> {
+    return apiRequest<PromptSystem>(`/prompt-systems/${id}/archive`, {
+      method: "PATCH",
+    });
+  },
+
+  /**
+   * Unarchive a Prompt System: PATCH /prompt-systems/{id}/unarchive
+   */
+  async unarchive(id: number): Promise<PromptSystem> {
+    return apiRequest<PromptSystem>(`/prompt-systems/${id}/unarchive`, {
+      method: "PATCH",
+    });
+  },
+
+  /**
    * Delete Prompt System by ID: DELETE /prompt-systems/{id}
    */
   async delete(id: number): Promise<{ message: string; id: number }> {
@@ -142,3 +187,5 @@ export const promptSystemService = {
     });
   },
 };
+
+
