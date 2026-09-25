@@ -3,14 +3,13 @@
  */
 
 export const API_BASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  "http://localhost:8000";
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "";
 
 export class ApiError extends Error {
   status: number;
-  data?: any;
+  data?: unknown;
 
-  constructor(message: string, status: number, data?: any) {
+  constructor(message: string, status: number, data?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -21,15 +20,25 @@ export class ApiError extends Error {
 /**
  * Format error responses from FastAPI / Pydantic into human-readable messages.
  */
-export function formatErrorDetail(status: number, data: any): string {
-  if (data?.detail) {
-    if (typeof data.detail === "string") {
-      return data.detail;
+export function formatErrorDetail(status: number, data: unknown): string {
+  const errData = data as
+    | { detail?: string | Array<{ msg?: string } | string> }
+    | null
+    | undefined;
+
+  if (errData?.detail) {
+    if (typeof errData.detail === "string") {
+      return errData.detail;
     }
-    if (Array.isArray(data.detail)) {
-      return data.detail
-        .map((item: any) => {
-          if (item?.msg) {
+    if (Array.isArray(errData.detail)) {
+      return errData.detail
+        .map((item) => {
+          if (
+            typeof item === "object" &&
+            item !== null &&
+            "msg" in item &&
+            typeof item.msg === "string"
+          ) {
             return item.msg.replace(/^Value error,\s*/i, "");
           }
           return typeof item === "string" ? item : JSON.stringify(item);
@@ -38,10 +47,10 @@ export function formatErrorDetail(status: number, data: any): string {
     }
   }
 
-  if (status === 400) return "Invalid request. Please check your information.";
-  if (status === 401) return "Invalid email or password.";
+  if (status === 400) return "Invalid request. Please check your inputs.";
+  if (status === 401) return "Authentication required. Please log in again.";
   if (status === 403) return "You do not have permission to perform this action.";
-  if (status === 404) return "Requested resource was not found.";
+  if (status === 404) return "Prompt System not found.";
   if (status === 422) return "Validation failed. Please verify your inputs.";
   if (status >= 500) return "A server error occurred. Please try again later.";
 
@@ -62,13 +71,20 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  if (!headers.has("Authorization") && typeof window !== "undefined") {
+    const token = localStorage.getItem("pf-token");
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...options,
       headers,
     });
-  } catch (err: any) {
+  } catch (_err: unknown) {
     throw new ApiError(
       "Unable to connect to the PromptForge server. Please ensure the backend is running.",
       0
@@ -84,3 +100,5 @@ export async function apiRequest<T>(
 
   return data as T;
 }
+
+
