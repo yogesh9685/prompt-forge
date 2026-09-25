@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Loader2, MoreHorizontal, RefreshCw, Sparkles } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, CheckCircle2, Loader2, MoreHorizontal, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PromptSystem, VariableDefinition, VariableValidationResponse } from "@/services";
 import {
@@ -29,6 +29,8 @@ interface PromptEditorProps {
   onBackToLibrary: () => void;
   onPreview: () => void;
   onDelete: () => void;
+  onArchive?: (id: number) => void;
+  onUnarchive?: (id: number) => void;
   editName: string;
   setEditName: (val: string) => void;
   editDescription: string;
@@ -38,6 +40,7 @@ interface PromptEditorProps {
   editVariables: VariableDefinition[];
   editModules: unknown[];
   editExamples: unknown[];
+  setEditExamples: (val: unknown[]) => void;
   editOutputFormat: unknown;
   setEditOutputFormat: (val: unknown) => void;
   onAddVariable: (prefillName?: string) => void;
@@ -63,6 +66,8 @@ export function PromptEditor({
   onBackToLibrary,
   onPreview,
   onDelete,
+  onArchive,
+  onUnarchive,
   editName,
   setEditName,
   editDescription,
@@ -72,6 +77,7 @@ export function PromptEditor({
   editVariables,
   editModules,
   editExamples,
+  setEditExamples,
   editOutputFormat,
   setEditOutputFormat,
   onAddVariable,
@@ -141,7 +147,28 @@ export function PromptEditor({
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="rounded-md bg-success-soft px-2 py-1 font-mono text-[10px] uppercase text-success">
+          {onArchive && onUnarchive && (
+            selectedSystem.archived ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2.5 text-xs text-primary hover:text-primary"
+                onClick={() => onUnarchive(selectedSystem.id)}
+              >
+                <ArchiveRestore className="size-3.5" /> Unarchive
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onArchive(selectedSystem.id)}
+              >
+                <Archive className="size-3.5" /> Archive
+              </Button>
+            )
+          )}
+          <span className={`rounded-md px-2 py-1 font-mono text-[10px] uppercase ${!selectedSystem.archived ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
             {!selectedSystem.archived ? "Active" : "Archived"}
           </span>
           <span className="rounded-md bg-primary-soft px-2 py-1 font-mono text-[10px] uppercase text-primary">
@@ -209,7 +236,14 @@ export function PromptEditor({
 
           {activeTab === "Modules" && <ModulesTab editModules={editModules} />}
 
-          {activeTab === "Examples" && <ExamplesTab editExamples={editExamples} />}
+          {activeTab === "Examples" && (
+            <ExamplesTab
+              editExamples={editExamples}
+              setEditExamples={setEditExamples}
+              saving={saving}
+              onSave={onSave}
+            />
+          )}
 
           {activeTab === "Output" && (
             <OutputTab

@@ -124,7 +124,7 @@ export function PromptForgeDashboard() {
     setLoadingList(true);
     setListError(null);
     try {
-      const data = await promptSystemService.list({ sort: "recent" });
+      const data = await promptSystemService.list({ sort: "recent", include_archived: true });
       setSystems(data);
     } catch (err: unknown) {
       const apiErr = err as { status?: number; message?: string };
@@ -341,6 +341,34 @@ export function PromptForgeDashboard() {
       setDeleteError(apiErr.message || "Failed to delete Prompt System.");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Handle Archive Prompt System
+  const handleArchivePromptSystem = async (id: number) => {
+    try {
+      const updated = await promptSystemService.archive(id);
+      setSystems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedSystem && selectedSystem.id === updated.id) {
+        setSelectedSystem(updated);
+      }
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string };
+      setListError(apiErr.message || "Failed to archive Prompt System.");
+    }
+  };
+
+  // Handle Unarchive Prompt System
+  const handleUnarchivePromptSystem = async (id: number) => {
+    try {
+      const updated = await promptSystemService.unarchive(id);
+      setSystems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedSystem && selectedSystem.id === updated.id) {
+        setSelectedSystem(updated);
+      }
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string };
+      setListError(apiErr.message || "Failed to unarchive Prompt System.");
     }
   };
 
@@ -711,6 +739,8 @@ export function PromptForgeDashboard() {
                 setNewOpen(true);
               }}
               onDelete={promptDelete}
+              onArchive={handleArchivePromptSystem}
+              onUnarchive={handleUnarchivePromptSystem}
             />
           ) : (
             <PromptEditor
@@ -728,6 +758,8 @@ export function PromptForgeDashboard() {
               onBackToLibrary={() => setScreen("library")}
               onPreview={() => setPreviewOpen(true)}
               onDelete={() => selectedSystem && promptDelete(selectedSystem)}
+              onArchive={handleArchivePromptSystem}
+              onUnarchive={handleUnarchivePromptSystem}
               editName={editName}
               setEditName={setEditName}
               editDescription={editDescription}
@@ -737,6 +769,7 @@ export function PromptForgeDashboard() {
               editVariables={editVariables}
               editModules={editModules}
               editExamples={editExamples}
+              setEditExamples={setEditExamples}
               editOutputFormat={editOutputFormat}
               setEditOutputFormat={setEditOutputFormat}
               onAddVariable={openAddVariable}

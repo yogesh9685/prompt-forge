@@ -31,7 +31,7 @@ def extract_variables(text: Optional[str]) -> List[str]:
 
 def validate_prompt_variables(
     instructions: Optional[str],
-    configured_variables: Optional[List[Any]],
+    configured_variables: Optional[Any],
 ) -> Dict[str, Any]:
     """Validate configured variables against variables actually used in instructions.
     
@@ -46,7 +46,28 @@ def validate_prompt_variables(
 
     configured_names = []
     seen = set()
-    for item in configured_variables or []:
+
+    # Extract items whether configured_variables is a list, dict, or single item
+    items_to_process = []
+    if configured_variables:
+        if isinstance(configured_variables, dict):
+            if "variables" in configured_variables and isinstance(configured_variables["variables"], (list, dict)):
+                raw_vars = configured_variables["variables"]
+                items_to_process = raw_vars if isinstance(raw_vars, list) else list(raw_vars.values())
+            elif "name" in configured_variables and isinstance(configured_variables["name"], str):
+                items_to_process = [configured_variables]
+            else:
+                # Could be mapping like {"topic": {...}} or {"topic": "text"}
+                items_to_process = [
+                    v if (isinstance(v, dict) and "name" in v) else k
+                    for k, v in configured_variables.items()
+                ]
+        elif isinstance(configured_variables, (list, tuple, set)):
+            items_to_process = list(configured_variables)
+        elif isinstance(configured_variables, str):
+            items_to_process = [configured_variables]
+
+    for item in items_to_process:
         name = None
         if isinstance(item, dict) and "name" in item:
             name = str(item["name"]).strip()

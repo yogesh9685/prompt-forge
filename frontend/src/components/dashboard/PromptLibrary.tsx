@@ -1,5 +1,7 @@
 import {
   AlertCircle,
+  Archive,
+  ArchiveRestore,
   ChevronRight,
   FileCode2,
   Filter,
@@ -18,9 +20,11 @@ interface SystemCardProps {
   item: PromptSystem;
   onOpen: () => void;
   onDelete: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 }
 
-export function SystemCard({ item, onOpen, onDelete }: SystemCardProps) {
+export function SystemCard({ item, onOpen, onDelete, onArchive, onUnarchive }: SystemCardProps) {
   const varCount = Array.isArray(item.variables) ? item.variables.length : 0;
   const modCount = Array.isArray(item.modules) ? item.modules.length : 0;
   const tags = [
@@ -74,18 +78,51 @@ export function SystemCard({ item, onOpen, onDelete }: SystemCardProps) {
             </span>
           ))}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground hover:text-destructive opacity-70 hover:opacity-100"
-          title="Delete Prompt System"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {item.archived ? (
+            onUnarchive && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-primary opacity-70 hover:opacity-100"
+                title="Unarchive Prompt System"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnarchive();
+                }}
+              >
+                <ArchiveRestore className="size-3.5" />
+              </Button>
+            )
+          ) : (
+            onArchive && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground opacity-70 hover:opacity-100"
+                title="Archive Prompt System"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onArchive();
+                }}
+              >
+                <Archive className="size-3.5" />
+              </Button>
+            )
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:text-destructive opacity-70 hover:opacity-100"
+            title="Delete Prompt System"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
       </div>
       <div className="mt-4 flex items-center border-t border-border/60 pt-3 font-mono text-[10px] text-muted-foreground">
         <span>v{item.version}.0</span>
@@ -111,6 +148,8 @@ interface PromptLibraryProps {
   onOpen: (id: number) => void;
   onNew: () => void;
   onDelete: (system: PromptSystem) => void;
+  onArchive?: (id: number) => void;
+  onUnarchive?: (id: number) => void;
 }
 
 export function PromptLibrary({
@@ -128,6 +167,8 @@ export function PromptLibrary({
   onOpen,
   onNew,
   onDelete,
+  onArchive,
+  onUnarchive,
 }: PromptLibraryProps) {
   return (
     <div className="pf-fade mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -228,6 +269,8 @@ export function PromptLibrary({
                 item={item}
                 onOpen={() => onOpen(item.id)}
                 onDelete={() => onDelete(item)}
+                onArchive={onArchive ? () => onArchive(item.id) : undefined}
+                onUnarchive={onUnarchive ? () => onUnarchive(item.id) : undefined}
               />
             ))}
           </div>
@@ -237,9 +280,13 @@ export function PromptLibrary({
               <p className="text-sm text-muted-foreground">
                 {search
                   ? `No Prompt Systems match “${search}”.`
-                  : "No Prompt Systems found. Create your first Prompt System to get started."}
+                  : statusFilter === "Draft"
+                    ? "No archived Prompt Systems found."
+                    : statusFilter === "Active"
+                      ? "No active Prompt Systems found."
+                      : "No Prompt Systems found. Create your first Prompt System to get started."}
               </p>
-              {!search && (
+              {!search && statusFilter !== "Draft" && (
                 <Button size="sm" className="mt-4" onClick={onNew}>
                   <Plus className="mr-1.5 size-3.5" /> New Prompt System
                 </Button>

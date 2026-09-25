@@ -1,6 +1,14 @@
-import { Boxes, FileCode2, Loader2, Plus, Trash2 } from "lucide-react";
+import { Boxes, Edit2, FileCode2, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import React from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,26 +93,57 @@ export function ExampleItem({
   title,
   input,
   output,
+  onEdit,
+  onDelete,
 }: {
   title: string;
   input: string;
   output: string;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg ring-1 ring-border/60">
-      <div className="border-b border-border/60 bg-card/60 px-4 py-2 text-xs font-semibold">
-        {title}
+      <div className="flex items-center justify-between border-b border-border/60 bg-card/60 px-4 py-2 text-xs font-semibold">
+        <span>{title}</span>
+        {(onEdit || onDelete) && (
+          <div className="flex items-center gap-1">
+            {onEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={onEdit}
+              >
+                <Edit2 className="mr-1 size-3" /> Edit
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 text-muted-foreground hover:text-destructive"
+                title="Delete example"
+                onClick={onDelete}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       <div className="grid gap-px bg-border/60 sm:grid-cols-2">
         <div className="bg-card/45 p-4">
           <span className="font-mono text-[10px] uppercase text-muted-foreground">Input</span>
-          <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-relaxed">
-            {input}
+          <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
+            {input || "(none)"}
           </pre>
         </div>
         <div className="bg-card/45 p-4">
           <span className="font-mono text-[10px] uppercase text-muted-foreground">Output</span>
-          <p className="mt-2 text-xs leading-relaxed">{output}</p>
+          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">
+            {output || "(none)"}
+          </p>
         </div>
       </div>
     </div>
@@ -289,41 +328,183 @@ export function ModulesTab({ editModules }: { editModules: unknown[] }) {
 }
 
 // Tab: Examples
-export function ExamplesTab({ editExamples }: { editExamples: unknown[] }) {
+export function ExamplesTab({
+  editExamples,
+  setEditExamples,
+  saving,
+  onSave,
+}: {
+  editExamples: unknown[];
+  setEditExamples?: (val: unknown[]) => void;
+  saving?: boolean;
+  onSave?: () => void;
+}) {
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [editIndex, setEditIndex] = React.useState<number | null>(null);
+  const [exTitle, setExTitle] = React.useState("");
+  const [exInput, setExInput] = React.useState("");
+  const [exOutput, setExOutput] = React.useState("");
+
+  const handleOpenAdd = () => {
+    setEditIndex(null);
+    setExTitle("");
+    setExInput("");
+    setExOutput("");
+    setModalOpen(true);
+  };
+
+  const handleOpenEdit = (idx: number) => {
+    const item = editExamples[idx];
+    const exObj = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : null;
+    setEditIndex(idx);
+    setExTitle(typeof exObj?.title === "string" ? exObj.title : `Example ${idx + 1}`);
+    setExInput(
+      typeof exObj?.input === "string"
+        ? exObj.input
+        : exObj?.input
+          ? JSON.stringify(exObj.input, null, 2)
+          : typeof item === "string"
+            ? item
+            : ""
+    );
+    setExOutput(
+      typeof exObj?.output === "string"
+        ? exObj.output
+        : exObj?.output
+          ? JSON.stringify(exObj.output, null, 2)
+          : ""
+    );
+    setModalOpen(true);
+  };
+
+  const handleDelete = (idx: number) => {
+    if (!setEditExamples) return;
+    const next = [...editExamples];
+    next.splice(idx, 1);
+    setEditExamples(next);
+  };
+
+  const handleSaveModal = () => {
+    if (!setEditExamples) return;
+    const next = [...editExamples];
+    const newEx = {
+      title: exTitle.trim() || undefined,
+      input: exInput,
+      output: exOutput,
+    };
+    if (editIndex !== null && editIndex >= 0) {
+      next[editIndex] = newEx;
+    } else {
+      next.push(newEx);
+    }
+    setEditExamples(next);
+    setModalOpen(false);
+  };
+
   return (
-    <Panel
-      title="Input / Output Examples"
-      description="Demonstrate the response pattern you expect."
-    >
-      <div className="space-y-3">
-        {editExamples && editExamples.length > 0 ? (
-          editExamples.map((ex, idx) => {
-            const exObj = typeof ex === "object" && ex !== null ? (ex as { title?: string; input?: unknown; output?: unknown }) : null;
-            return (
-              <ExampleItem
-                key={idx}
-                title={exObj?.title || `Example ${idx + 1}`}
-                input={typeof exObj?.input === "string" ? exObj.input : JSON.stringify(exObj?.input, null, 2)}
-                output={typeof exObj?.output === "string" ? exObj.output : JSON.stringify(exObj?.output, null, 2)}
-              />
-            );
-          })
-        ) : (
-          <>
-            <ExampleItem
-              title="Rust async walkthrough"
-              input={'topic = "tokio scheduling"\naudience = "backend engineers"'}
-              output="A structured article with a runtime explanation, three examples, and a concise trade-off table."
-            />
-            <ExampleItem
-              title="Distributed locks"
-              input={'topic = "coordination under partial failure"\naudience = "CTO"'}
-              output="An executive technical brief focused on failure modes and architecture decisions."
-            />
-          </>
+    <>
+      <Panel
+        title="Input / Output Examples"
+        description="Demonstrate the response pattern and structure you expect."
+        action={setEditExamples ? "Add Example" : undefined}
+        onAction={handleOpenAdd}
+      >
+        <div className="space-y-3">
+          {editExamples && editExamples.length > 0 ? (
+            editExamples.map((ex, idx) => {
+              const exObj = typeof ex === "object" && ex !== null ? (ex as { title?: string; input?: unknown; output?: unknown }) : null;
+              const inputStr = typeof exObj?.input === "string" ? exObj.input : (exObj?.input ? JSON.stringify(exObj.input, null, 2) : (typeof ex === "string" ? ex : ""));
+              const outputStr = typeof exObj?.output === "string" ? exObj.output : (exObj?.output ? JSON.stringify(exObj.output, null, 2) : "");
+              return (
+                <ExampleItem
+                  key={idx}
+                  title={exObj?.title || `Example ${idx + 1}`}
+                  input={inputStr}
+                  output={outputStr}
+                  onEdit={setEditExamples ? () => handleOpenEdit(idx) : undefined}
+                  onDelete={setEditExamples ? () => handleDelete(idx) : undefined}
+                />
+              );
+            })
+          ) : (
+            <div className="rounded-lg border border-dashed border-border/80 py-8 text-center">
+              <p className="text-xs text-muted-foreground">
+                No examples added yet. Examples help align model responses with your expected format.
+              </p>
+              {setEditExamples && (
+                <Button size="sm" variant="outline" className="mt-3 gap-1.5 text-xs" onClick={handleOpenAdd}>
+                  <Plus className="size-3.5" /> Add First Example
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {onSave && (
+          <div className="mt-4 flex justify-end">
+            <Button size="sm" onClick={onSave} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Saving...
+                </>
+              ) : (
+                "Save Examples"
+              )}
+            </Button>
+          </div>
         )}
-      </div>
-    </Panel>
+      </Panel>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editIndex !== null ? "Edit Example" : "Add Example"}</DialogTitle>
+            <DialogDescription>
+              Demonstrate input structure and corresponding ideal output.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <div>
+              <label className="font-medium text-foreground">Title (optional)</label>
+              <Input
+                className="mt-1"
+                placeholder="e.g. Technical blog post"
+                value={exTitle}
+                onChange={(e) => setExTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="font-medium text-foreground">Input</label>
+              <Textarea
+                className="mt-1 font-mono text-xs"
+                rows={4}
+                placeholder="e.g. topic = 'tokio'\naudience = 'engineers'"
+                value={exInput}
+                onChange={(e) => setExInput(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="font-medium text-foreground">Output</label>
+              <Textarea
+                className="mt-1 font-mono text-xs"
+                rows={4}
+                placeholder="e.g. Expected assistant response format"
+                value={exOutput}
+                onChange={(e) => setExOutput(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSaveModal}>
+              {editIndex !== null ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
