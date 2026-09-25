@@ -1,6 +1,6 @@
 """PromptModule database model definition."""
 from datetime import datetime
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -17,6 +17,7 @@ from ..database.base import Base
 
 if TYPE_CHECKING:
     from .user import User
+    from .module_reference import ModuleReference
 
 
 class PromptModule(Base):
@@ -68,6 +69,13 @@ class PromptModule(Base):
 
     # Relationship to owning user
     owner: Mapped["User"] = relationship("User", back_populates="prompt_modules")
+
+    # Relationship to ModuleReferences (deleted with module via cascade)
+    module_references: Mapped[List["ModuleReference"]] = relationship(
+        "ModuleReference",
+        back_populates="prompt_module",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<PromptModule id={self.id} name='{self.name}' owner_id={self.owner_id}>"
