@@ -8,6 +8,7 @@ from ..database.base import Base
 
 if TYPE_CHECKING:
     from .prompt_system import PromptSystem
+    from .prompt_module import PromptModule
 
 
 class User(Base):
@@ -34,6 +35,11 @@ class User(Base):
     # Relationships
     prompt_systems: Mapped[List["PromptSystem"]] = relationship(
         "PromptSystem",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+    prompt_modules: Mapped[List["PromptModule"]] = relationship(
+        "PromptModule",
         back_populates="owner",
         cascade="all, delete-orphan",
     )
