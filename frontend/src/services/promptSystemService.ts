@@ -58,6 +58,14 @@ export interface ListPromptSystemsParams {
   include_archived?: boolean;
 }
 
+export interface VariableValidationResponse {
+  valid: boolean;
+  detected_variables: string[];
+  configured_variables: string[];
+  missing_variables: string[];
+  unused_variables: string[];
+}
+
 export const promptSystemService = {
   /**
    * Fetch Prompt Systems list: GET /prompt-systems
@@ -134,6 +142,25 @@ export const promptSystemService = {
   },
 
   /**
+   * Partially update variables for a Prompt System: PATCH /prompt-systems/{id}
+   */
+  async updateVariables(id: number, variables: VariableDefinition[]): Promise<PromptSystem> {
+    return apiRequest<PromptSystem>(`/prompt-systems/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ variables }),
+    });
+  },
+
+  /**
+   * Validate Prompt System variables: POST /prompt-systems/{id}/variables/validate
+   */
+  async validateVariables(id: number): Promise<VariableValidationResponse> {
+    return apiRequest<VariableValidationResponse>(`/prompt-systems/${id}/variables/validate`, {
+      method: "POST",
+    });
+  },
+
+  /**
    * Delete Prompt System by ID: DELETE /prompt-systems/{id}
    */
   async delete(id: number): Promise<{ message: string; id: number }> {
@@ -142,3 +169,4 @@ export const promptSystemService = {
     });
   },
 };
+
